@@ -72,6 +72,7 @@ const initialData = {
   hpn: "",
   items: [{ description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit" }],
   gstPercent: 18,
+  includeGst: true,
   roundedTotal: "",
   otherTerms: "100% payment immediately upon delivery.",
   paymentTerms: "Account Name: Madhwendra Kumar Singh\nBank Name: Punjab National Bank\nBankAccountNo:222110870000016\nIFSC Code: PUNB0222110",
@@ -174,7 +175,7 @@ export default function InvoiceSplitView() {
   const removeRow = (idx) => setData((d) => ({ ...d, items: d.items.filter((_, i) => i !== idx) }));
 
   const calc = useMemo(() => {
-    const gstPct = num(data.gstPercent);
+    const gstPct = data.includeGst ? num(data.gstPercent) : 0;
     const priceDivisor = 1 + gstPct / 100;
 
     const rows = data.items.map((it) => {
@@ -381,9 +382,21 @@ export default function InvoiceSplitView() {
 
         <div className="mb-4">
           <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500 mb-2 border-b border-gray-200 pb-1">Tax &amp; Totals</div>
-          <Row label="GST %">
-            <Input type="number" value={data.gstPercent} onChange={(e) => setData((d) => ({ ...d, gstPercent: e.target.value }))} />
-          </Row>
+          <div className="flex items-center gap-2 mb-2">
+            <input
+              type="checkbox"
+              id="includeGst"
+              checked={data.includeGst}
+              onChange={(e) => setData((d) => ({ ...d, includeGst: e.target.checked }))}
+              className="w-4 h-4 accent-green-700 cursor-pointer"
+            />
+            <label htmlFor="includeGst" className="text-[12px] font-semibold text-gray-700 cursor-pointer">Include GST</label>
+          </div>
+          {data.includeGst && (
+            <Row label="GST %">
+              <Input type="number" value={data.gstPercent} onChange={(e) => setData((d) => ({ ...d, gstPercent: e.target.value }))} />
+            </Row>
+          )}
           <Row label={`Rounded Total (auto: ₹${inr2(calc.total)})`}>
             <Input type="text" inputMode="decimal" placeholder="leave blank to auto-round" value={data.roundedTotal} onChange={(e) => setData((d) => ({ ...d, roundedTotal: e.target.value }))} />
           </Row>
@@ -561,13 +574,15 @@ export default function InvoiceSplitView() {
                 <td style={{border:'1px solid #999',padding:'5px 6px',fontWeight:'700',textAlign:'center'}}>SUB – TOTAL</td>
                 <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right',fontWeight:'600'}}>{inr2(calc.subtotal)}</td>
               </tr>
-              {/* GST */}
-              <tr>
-                <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
-                <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
-                <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>GST @ {data.gstPercent}%</td>
-                <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(calc.gstTotal)}</td>
-              </tr>
+              {/* GST — only shown when includeGst is on */}
+              {data.includeGst && (
+                <tr>
+                  <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>GST @ {data.gstPercent}%</td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(calc.gstTotal)}</td>
+                </tr>
+              )}
               {/* GRAND TOTAL */}
               <tr>
                 <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
