@@ -70,7 +70,7 @@ const initialData = {
   to: { name: "", address: "", mob: "", email: "", gst: "", state: "", stateCode: "" },
   shipTo: "",
   hpn: "",
-  items: [{ description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit" }],
+  items: [{ description: "", qty: 1, unitPrice: 0, finalPrice: "", discount: 0, priceSource: "unit" }],
   gstPercent: 18,
   includeGst: true,
   roundedTotal: "",
@@ -171,7 +171,7 @@ export default function InvoiceSplitView() {
     items[idx] = { ...items[idx], [field]: value, priceSource: field === "finalPrice" ? "final" : "unit" };
     return { ...d, items };
   });
-  const addRow = () => setData((d) => ({ ...d, items: [...d.items, { description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit" }] }));
+  const addRow = () => setData((d) => ({ ...d, items: [...d.items, { description: "", qty: 1, unitPrice: 0, finalPrice: "", discount: 0, priceSource: "unit" }] }));
   const removeRow = (idx) => setData((d) => ({ ...d, items: d.items.filter((_, i) => i !== idx) }));
 
   const calc = useMemo(() => {
@@ -186,14 +186,14 @@ export default function InvoiceSplitView() {
         : num(it.unitPrice);
       const gstAmount = unitPrice * (gstPct / 100);
       const computedFinalPrice = unitPrice + gstAmount;
-      return { ...it, unitPrice, totalPrice: qty * unitPrice, gstAmount, computedFinalPrice, gstPct, priceDivisor };
+      return { ...it, unitPrice, totalPrice: qty * unitPrice - num(it.discount), gstAmount, computedFinalPrice, gstPct, priceDivisor };
     });
     const subtotal = rows.reduce((s, r) => s + r.totalPrice, 0);
     const gstTotal = (subtotal * gstPct) / 100;
     const total = subtotal + gstTotal;
     const rounded = data.roundedTotal !== "" ? num(data.roundedTotal) : Math.round(total);
     return { rows, subtotal, gstTotal, total, rounded, gstPct, priceDivisor };
-  }, [data.items, data.gstPercent, data.roundedTotal]);
+  }, [data.items, data.gstPercent, data.includeGst, data.roundedTotal]);
 
   const amountInWords = "RUPEES - " + numberToWordsLakh(calc.rounded) + " ONLY.";
 
@@ -443,6 +443,7 @@ export default function InvoiceSplitView() {
                 <Row label={`GST (${calc.gstPct}%) auto`}>
                   <Input readOnly value={inr2(row.gstAmount ?? 0)} className="bg-gray-100 text-gray-700" />
                 </Row>
+                <Row label="Discount (₹)"><Input type="text" inputMode="decimal" value={it.discount ?? 0} onChange={(e) => updateItem(idx, "discount", e.target.value)} /></Row>
               </div>
             );
           })}
@@ -553,8 +554,9 @@ export default function InvoiceSplitView() {
                 <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'40px'}}>S. No.</th>
                 <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>Description</th>
                 <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'55px'}}>Qty</th>
-                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'110px'}}>Unit Price (₹)</th>
-                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'110px'}}>Amount (₹)</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'100px'}}>Unit Price (₹)</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'80px'}}>Discount (₹)</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'100px'}}>Amount (₹)</th>
               </tr>
             </thead>
             <tbody>
@@ -564,30 +566,26 @@ export default function InvoiceSplitView() {
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',fontWeight:'600'}}>{it.description || '—'}</td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>{it.qty} Pcs</td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(it.unitPrice)}</td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{num(it.discount) > 0 ? inr2(num(it.discount)) : '—'}</td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(it.totalPrice)}</td>
                 </tr>
               ))}
               {/* SUB-TOTAL */}
               <tr>
-                <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
-                <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',fontWeight:'600'}}>1 Set</td>
-                <td style={{border:'1px solid #999',padding:'5px 6px',fontWeight:'700',textAlign:'center'}}>SUB – TOTAL</td>
+                <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={3}></td>
+                <td style={{border:'1px solid #999',padding:'5px 6px',fontWeight:'700',textAlign:'center'}} colSpan={2}>SUB – TOTAL</td>
                 <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right',fontWeight:'600'}}>{inr2(calc.subtotal)}</td>
               </tr>
-              {/* GST — only shown when includeGst is on */}
               {data.includeGst && (
                 <tr>
-                  <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
-                  <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
-                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>GST @ {data.gstPercent}%</td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={3}></td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}} colSpan={2}>GST @ {data.gstPercent}%</td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(calc.gstTotal)}</td>
                 </tr>
               )}
-              {/* GRAND TOTAL */}
               <tr>
-                <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
-                <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
-                <td style={{border:'1px solid #999',padding:'5px 6px',fontWeight:'700',textAlign:'center'}}>Grand Total (Rounded Off)</td>
+                <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={3}></td>
+                <td style={{border:'1px solid #999',padding:'5px 6px',fontWeight:'700',textAlign:'center'}} colSpan={2}>Grand Total (Rounded Off)</td>
                 <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right',fontWeight:'700'}}>{inr2(calc.rounded)}</td>
               </tr>
             </tbody>
