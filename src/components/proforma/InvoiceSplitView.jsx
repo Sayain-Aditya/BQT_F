@@ -5,6 +5,7 @@ import bktLogo from "../../assets/bqt.png";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { saveProforma, getProforma, updateProforma } from "../../api/proformaInvoiceApi";
+import { getTyres } from "../../api/tyreApi";
 
 // ---------- helpers ----------
 const inr2 = (n) => (isNaN(n) ? 0 : n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -70,9 +71,7 @@ const initialData = {
   to: { name: "", address: "", mob: "", email: "", gst: "", state: "", stateCode: "" },
   shipTo: "",
   hpn: "",
-  items: [{ description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit" }],
-  discount: 0,
-  discountType: "flat",
+  items: [{ description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit", discount: 0, discountType: "flat" }],
   gstPercent: 18,
   includeGst: true,
   roundedTotal: "",
@@ -131,6 +130,9 @@ export default function InvoiceSplitView() {
   const isFirstRender = useRef(true);
   const skipNextAutosave = useRef(false);
   const printAreaRef = useRef(null);
+  const [tyreSuggestions, setTyreSuggestions] = useState([]);
+  const [tyreSearch, setTyreSearch] = useState({});
+  const tyreTimer = useRef(null);
 
   // Load existing proforma when editing
   useEffect(() => {
@@ -173,8 +175,28 @@ export default function InvoiceSplitView() {
     items[idx] = { ...items[idx], [field]: value, priceSource: field === "finalPrice" ? "final" : "unit" };
     return { ...d, items };
   });
-  const addRow = () => setData((d) => ({ ...d, items: [...d.items, { description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit" }] }));
+  const addRow = () => setData((d) => ({ ...d, items: [...d.items, { description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit", discount: 0, discountType: "flat" }] }));
   const removeRow = (idx) => setData((d) => ({ ...d, items: d.items.filter((_, i) => i !== idx) }));
+
+  const searchTyres = async (idx, q) => {
+    setTyreSearch((s) => ({ ...s, [idx]: q }));
+    updateItem(idx, "description", q);
+    clearTimeout(tyreTimer.current);
+    if (!q) { setTyreSuggestions((s) => ({ ...s, [idx]: [] })); return; }
+    tyreTimer.current = setTimeout(async () => {
+      try {
+        const results = await getTyres(q);
+        setTyreSuggestions((s) => ({ ...s, [idx]: results.slice(0, 8) }));
+      } catch (_) {}
+    }, 300);
+  };
+
+  const selectTyre = (idx, tyre) => {
+    updateItem(idx, "description", tyre.name);
+    setPrice(idx, "unitPrice", tyre.price);
+    setTyreSearch((s) => ({ ...s, [idx]: '' }));
+    setTyreSuggestions((s) => ({ ...s, [idx]: [] }));
+  };
 
   const calc = useMemo(() => {
     const gstPct = data.includeGst ? num(data.gstPercent) : 0;
@@ -186,20 +208,25 @@ export default function InvoiceSplitView() {
       const unitPrice = priceSource === "final"
         ? num(it.finalPrice) / priceDivisor
         : num(it.unitPrice);
-      const gstAmount = unitPrice * (gstPct / 100);
-      const computedFinalPrice = unitPrice + gstAmount;
-      return { ...it, unitPrice, totalPrice: qty * unitPrice, gstAmount, computedFinalPrice, gstPct, priceDivisor };
+      const discountAmt = (it.discountType || "flat") === "pct"
+        ? unitPrice * (num(it.discount) / 100)
+        : num(it.discount);
+      const discountedUnitPrice = unitPrice - discountAmt;
+      const totalPrice = discountedUnitPrice * qty;
+      const totalDiscountAmt = discountAmt * qty;
+      const gstAmount = discountedUnitPrice * (gstPct / 100);
+      const computedFinalPrice = unitPrice + unitPrice * (gstPct / 100);
+      return { ...it, unitPrice, discountAmt, discountedUnitPrice, totalPrice, totalDiscountAmt, gstAmount, computedFinalPrice, gstPct, priceDivisor };
     });
-    const subtotal = rows.reduce((s, r) => s + r.totalPrice, 0);
-    const discountAmt = data.discountType === "pct"
-      ? subtotal * (num(data.discount) / 100)
-      : num(data.discount);
-    const discountedSubtotal = subtotal - discountAmt;
+
+    const subtotal = rows.reduce((s, r) => s + r.unitPrice * num(r.qty), 0);
+    const totalDiscountAmt = rows.reduce((s, r) => s + r.totalDiscountAmt, 0);
+    const discountedSubtotal = rows.reduce((s, r) => s + r.totalPrice, 0);
     const gstTotal = (discountedSubtotal * gstPct) / 100;
     const total = discountedSubtotal + gstTotal;
     const rounded = data.roundedTotal !== "" ? num(data.roundedTotal) : Math.round(total);
-    return { rows, subtotal, discountAmt, discountedSubtotal, gstTotal, total, rounded, gstPct, priceDivisor };
-  }, [data.items, data.gstPercent, data.includeGst, data.discount, data.discountType, data.roundedTotal]);
+    return { rows, subtotal, totalDiscountAmt, discountedSubtotal, gstTotal, total, rounded, gstPct, priceDivisor };
+  }, [data.items, data.gstPercent, data.includeGst, data.roundedTotal]);
 
   const amountInWords = "RUPEES - " + numberToWordsLakh(calc.rounded) + " ONLY.";
 
@@ -403,22 +430,6 @@ export default function InvoiceSplitView() {
               <Input type="number" value={data.gstPercent} onChange={(e) => setData((d) => ({ ...d, gstPercent: e.target.value }))} />
             </Row>
           )}
-          <div className="mb-2">
-            <label className="block text-[11px] font-semibold text-gray-700 mb-1">Discount</label>
-            <div className="flex gap-1 mb-1">
-              <button type="button" onClick={() => setData((d) => ({ ...d, discountType: "flat" }))}
-                className={`flex-1 py-1 text-[11px] font-semibold rounded border transition-colors ${
-                  (data.discountType || "flat") === "flat" ? "bg-green-700 text-white border-green-700" : "bg-white text-gray-600 border-gray-300"
-                }`}>₹ Flat</button>
-              <button type="button" onClick={() => setData((d) => ({ ...d, discountType: "pct" }))}
-                className={`flex-1 py-1 text-[11px] font-semibold rounded border transition-colors ${
-                  data.discountType === "pct" ? "bg-green-700 text-white border-green-700" : "bg-white text-gray-600 border-gray-300"
-                }`}>% Percent</button>
-            </div>
-            <Input type="text" inputMode="decimal" placeholder={data.discountType === "pct" ? "e.g. 5" : "e.g. 1000"}
-              value={data.discount} onChange={(e) => setData((d) => ({ ...d, discount: e.target.value }))} />
-            {num(data.discount) > 0 && <div className="text-[10px] text-gray-500 mt-0.5">= ₹{inr2(calc.discountAmt)} off subtotal</div>}
-          </div>
           <Row label={`Rounded Total (auto: ₹${inr2(calc.total)})`}>
             <Input type="text" inputMode="decimal" placeholder="leave blank to auto-round" value={data.roundedTotal} onChange={(e) => setData((d) => ({ ...d, roundedTotal: e.target.value }))} />
           </Row>
@@ -442,8 +453,60 @@ export default function InvoiceSplitView() {
                     ×
                   </button>
                 )}
-                <Row label="Description"><Input value={it.description} onChange={(e) => updateItem(idx, "description", e.target.value)} /></Row>
+                <div className="relative mb-2">
+                  <label className="block text-[11px] font-semibold text-gray-700 mb-0.5">Description</label>
+                  <Input
+                    value={it.description}
+                    placeholder="Type to search tyres…"
+                    onChange={(e) => searchTyres(idx, e.target.value)}
+                    onFocus={() => it.description && searchTyres(idx, it.description)}
+                  />
+                  {it.description && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateItem(idx, "description", "");
+                        setPrice(idx, "unitPrice", 0);
+                        setTyreSuggestions((s) => ({ ...s, [idx]: [] }));
+                      }}
+                      className="absolute right-2 top-6 text-[10px] text-red-500 hover:text-red-700 font-semibold"
+                    >
+                      ✕ clear
+                    </button>
+                  )}
+                  {(tyreSuggestions[idx] || []).length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 bg-white border border-gray-200 rounded-lg shadow-lg mt-0.5 max-h-48 overflow-y-auto">
+                      {tyreSuggestions[idx].map((t) => (
+                        <button
+                          key={t._id}
+                          type="button"
+                          onMouseDown={() => selectTyre(idx, t)}
+                          className="w-full text-left px-3 py-2 hover:bg-green-50 text-[12px] border-b border-gray-100 last:border-0"
+                        >
+                          <span className="font-semibold text-gray-800">{t.name}</span>
+                          <span className="float-right font-semibold text-green-700">₹{Number(t.price).toLocaleString('en-IN')}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <Row label="Qty (Pcs)"><Input type="number" value={it.qty} onChange={(e) => updateItem(idx, "qty", e.target.value)} /></Row>
+                <div className="mb-2">
+                  <label className="block text-[11px] font-semibold text-gray-700 mb-1">Discount</label>
+                  <div className="flex gap-1 mb-1">
+                    <button type="button" onClick={() => updateItem(idx, "discountType", "flat")}
+                      className={`flex-1 py-1 text-[11px] font-semibold rounded border transition-colors ${
+                        (it.discountType || "flat") === "flat" ? "bg-green-700 text-white border-green-700" : "bg-white text-gray-600 border-gray-300"
+                      }`}>₹ Flat</button>
+                    <button type="button" onClick={() => updateItem(idx, "discountType", "pct")}
+                      className={`flex-1 py-1 text-[11px] font-semibold rounded border transition-colors ${
+                        it.discountType === "pct" ? "bg-green-700 text-white border-green-700" : "bg-white text-gray-600 border-gray-300"
+                      }`}>% Percent</button>
+                  </div>
+                  <Input type="text" inputMode="decimal" placeholder={(it.discountType || "flat") === "pct" ? "e.g. 5" : "e.g. 500"}
+                    value={it.discount ?? 0} onChange={(e) => updateItem(idx, "discount", e.target.value)} />
+                  {num(it.discount) > 0 && <div className="text-[10px] text-gray-500 mt-0.5">= ₹{inr2(row.discountAmt ?? 0)} off per unit</div>}
+                </div>
                 <div className="grid grid-cols-2 gap-1.5 mt-1">
                   <Row label={`Unit Price (before GST)${priceSource === "final" ? " — auto" : " ✏"}`}>
                     <Input
@@ -572,11 +635,12 @@ export default function InvoiceSplitView() {
           <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'0',fontSize:'11px'}}>
             <thead>
               <tr style={{background:'#f0f0f0'}}>
-                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'40px'}}>S. No.</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'36px'}}>S. No.</th>
                 <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>Description</th>
-                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'55px'}}>Qty</th>
-                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'110px'}}>Unit Price (₹)</th>
-                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'110px'}}>Amount (₹)</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'50px'}}>Qty</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'90px'}}>Unit Price (₹)</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'80px'}}>Discount</th>
+                <th style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',width:'90px'}}>Amount (₹)</th>
               </tr>
             </thead>
             <tbody>
@@ -586,6 +650,13 @@ export default function InvoiceSplitView() {
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',fontWeight:'600'}}>{it.description || '—'}</td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>{it.qty} Pcs</td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(it.unitPrice)}</td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>
+                    {num(it.discount) > 0
+                      ? (it.discountType || 'flat') === 'pct'
+                        ? `${it.discount}%`
+                        : it.unitPrice > 0 ? `${((it.discountAmt / it.unitPrice) * 100).toFixed(1)}%` : '—'
+                      : '—'}
+                  </td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(it.totalPrice)}</td>
                 </tr>
               ))}
@@ -594,23 +665,15 @@ export default function InvoiceSplitView() {
                 <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
                 <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center',fontWeight:'600'}}>1 Set</td>
                 <td style={{border:'1px solid #999',padding:'5px 6px',fontWeight:'700',textAlign:'center'}}>SUB – TOTAL</td>
-                <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right',fontWeight:'600'}}>{inr2(calc.subtotal)}</td>
+                <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
+                <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right',fontWeight:'600'}}>{inr2(calc.discountedSubtotal)}</td>
               </tr>
-              {num(data.discount) > 0 && (
-                <tr>
-                  <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
-                  <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
-                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>
-                    Discount {data.discountType === "pct" ? `@ ${data.discount}%` : ""}
-                  </td>
-                  <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>- {inr2(calc.discountAmt)}</td>
-                </tr>
-              )}
               {data.includeGst && (
                 <tr>
                   <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
                   <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'center'}}>GST @ {data.gstPercent}%</td>
+                  <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
                   <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right'}}>{inr2(calc.gstTotal)}</td>
                 </tr>
               )}
@@ -618,6 +681,7 @@ export default function InvoiceSplitView() {
                 <td style={{border:'1px solid #999',padding:'5px 6px'}} colSpan={2}></td>
                 <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
                 <td style={{border:'1px solid #999',padding:'5px 6px',fontWeight:'700',textAlign:'center'}}>Grand Total (Rounded Off)</td>
+                <td style={{border:'1px solid #999',padding:'5px 6px'}}></td>
                 <td style={{border:'1px solid #999',padding:'5px 6px',textAlign:'right',fontWeight:'700'}}>{inr2(calc.rounded)}</td>
               </tr>
             </tbody>

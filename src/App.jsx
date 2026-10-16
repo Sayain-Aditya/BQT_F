@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import NewInvoice from './pages/NewInvoice';
 import EditInvoice from './pages/EditInvoice';
 import InvoiceSplitView from './components/proforma/InvoiceSplitView';
+import AdminPage from './pages/AdminPage';
 
 const Nav = () => {
   const { pathname } = useLocation();
@@ -30,8 +31,8 @@ const Nav = () => {
         {/* Desktop nav */}
         <nav className="hidden sm:flex gap-1">
           {navLink('/', 'Dashboard')}
-          {navLink('/new', '+ New Invoice')}
-          {navLink('/proforma', '+ New Proforma')}
+          {navLink('/proforma', '+ New Quotation')}
+          {navLink('/admin', 'Tyre Catalogue')}
         </nav>
         {/* Mobile hamburger */}
         <button
@@ -48,8 +49,8 @@ const Nav = () => {
       {open && (
         <div className="sm:hidden flex flex-col gap-1 px-4 pb-3 border-t border-green-800">
           {navLink('/', 'Dashboard')}
-          {navLink('/new', '+ New Invoice')}
-          {navLink('/proforma', '+ New Proforma')}
+          {navLink('/proforma', '+ New Quotation')}
+          {navLink('/admin', 'Tyre Catalogue')}
         </div>
       )}
     </header>
@@ -67,6 +68,7 @@ const App = () => (
           <Route path="/edit/:id" element={<EditInvoice />} />
           <Route path="/proforma" element={<InvoiceSplitView />} />
           <Route path="/proforma/:id" element={<InvoiceSplitView />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </main>
     </div>
