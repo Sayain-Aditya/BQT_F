@@ -129,6 +129,7 @@ export default function InvoiceSplitView() {
   const autoSaveTimer = useRef(null);
   const isFirstRender = useRef(true);
   const skipNextAutosave = useRef(false);
+  const isSavingRef = useRef(false);
   const printAreaRef = useRef(null);
   const [tyreSuggestions, setTyreSuggestions] = useState([]);
   const [tyreSearch, setTyreSearch] = useState({});
@@ -234,12 +235,17 @@ export default function InvoiceSplitView() {
   useEffect(() => {
     if (isFirstRender.current) { isFirstRender.current = false; return; }
     if (skipNextAutosave.current) { skipNextAutosave.current = false; return; }
+    // Don't auto-create a new doc until there's something meaningful
+    const hasContent = docIdRef.current || data.to.name || data.refNo || data.items.some(i => i.description);
+    if (!hasContent) return;
     clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => { doSave().catch(() => {}); }, 2000);
     return () => clearTimeout(autoSaveTimer.current);
   }, [data]);
 
   const doSave = async ({ throwOnError = false } = {}) => {
+    if (isSavingRef.current) return null;
+    isSavingRef.current = true;
     setSaving(true); setSaveMsg("");
     try {
       const payload = { ...data, logo, totals: calc, amountInWords };
@@ -258,8 +264,11 @@ export default function InvoiceSplitView() {
       setSaveMsg(`Save failed: ${error.message}`);
       if (throwOnError) throw error;
       return null;
+    } finally {
+      isSavingRef.current = false;
+      setSaving(false);
+      setTimeout(() => setSaveMsg(""), 3000);
     }
-    finally { setSaving(false); setTimeout(() => setSaveMsg(""), 3000); }
   };
 
   const getPdfFileName = () => {
