@@ -1,6 +1,6 @@
 ﻿import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import mksLogo from "../../assets/Logo.jpeg";
+import mksLogo from "../../assets/MKS Logo (1).png";
 import bktLogo from "../../assets/bqt.png";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
@@ -604,7 +604,15 @@ export default function InvoiceSplitView() {
           </div>
         </div>
 
-        <div ref={printAreaRef} className="w-full max-w-[860px] bg-white print:w-auto print-area" style={{fontFamily:'Arial,sans-serif',fontSize:'11px',color:'#000',padding:'24px 28px'}}>
+        <div ref={printAreaRef} className="w-full max-w-[860px] bg-white print:w-auto print-area" style={{fontFamily:'Arial,sans-serif',fontSize:'11px',color:'#000',padding:'24px 28px',position:'relative'}}>
+
+          {/* ── BKT WATERMARK ── */}
+          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none',zIndex:0}}>
+            <img src={bktLogo} alt="" aria-hidden="true" style={{width:'420px',opacity:0.12,objectFit:'contain',userSelect:'none'}} />
+          </div>
+
+          {/* ── CONTENT (above watermark) ── */}
+          <div style={{position:'relative',zIndex:1}}>
 
           {/* ── HEADER: MKS logo | Company Name | BKT/brand logo ── */}
           <table style={{width:'100%',borderCollapse:'collapse',marginBottom:'4px'}}><tbody><tr>
@@ -731,6 +739,8 @@ export default function InvoiceSplitView() {
             <div>Toll Free: 1800 891 6505 | Mob.: +91 {data.footerMobile}</div>
             <div>Email: {data.footerEmail} &nbsp; GSTIN: {data.footerGst}</div>
           </div>
+
+          </div>{/* end content z-index wrapper */}
         </div>
       </div>
     </div>
