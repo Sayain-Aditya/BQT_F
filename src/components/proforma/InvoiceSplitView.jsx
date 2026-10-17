@@ -71,6 +71,8 @@ const initialData = {
   to: { name: "", address: "", mob: "", email: "", gst: "", state: "", stateCode: "" },
   shipTo: "",
   hpn: "",
+  salesPerson: "",
+  salesContact: "",
   items: [{ description: "", qty: 1, unitPrice: 0, finalPrice: "", priceSource: "unit", discount: 0, discountType: "flat" }],
   gstPercent: 18,
   includeGst: true,
@@ -420,6 +422,8 @@ export default function InvoiceSplitView() {
           <Row label="State Code"><Input value={data.to.stateCode} onChange={(e) => updateTo("stateCode", e.target.value)} /></Row>
           <Row label="Ship To"><Input value={data.shipTo} onChange={(e) => setData((d) => ({ ...d, shipTo: e.target.value }))} /></Row>
           <Row label="HPN"><Input value={data.hpn} onChange={(e) => setData((d) => ({ ...d, hpn: e.target.value }))} /></Row>
+          <Row label="Sales Person / Deal Person"><Input value={data.salesPerson} onChange={(e) => setData((d) => ({ ...d, salesPerson: e.target.value }))} /></Row>
+          <Row label="Sales Contact"><Input type="tel" inputMode="numeric" value={data.salesContact} onChange={(e) => setData((d) => ({ ...d, salesContact: e.target.value.replace(/\D/g, '') }))} /></Row>
         </div>
 
         <div className="mb-4">
@@ -608,7 +612,8 @@ export default function InvoiceSplitView() {
               <img src={mksLogo} alt="MKS" style={{width:'72px',height:'72px',objectFit:'contain'}} />
             </td>
             <td style={{verticalAlign:'middle',textAlign:'center'}}>
-              <div style={{fontSize:'26px',fontWeight:'900',color:'#000',letterSpacing:'0.5px'}}>M/s Madhwendra Kumar Singh.</div>
+              <div style={{fontSize:'26px',fontWeight:'900',color:'#000',letterSpacing:'0.5px'}}>M/s Madhwendra Kumar Singh</div>
+              <div style={{fontSize:'13px',fontWeight:'700',color:'#222',marginTop:'2px',textDecoration:'underline'}}>Authorised Distributor – BKT Tyres</div>
             </td>
             <td style={{width:'90px',verticalAlign:'middle',textAlign:'right'}}>
               {logo
@@ -637,6 +642,7 @@ export default function InvoiceSplitView() {
             {data.to.gst && <div><strong>GSTIN:</strong> {data.to.gst}</div>}
             {data.shipTo && <div><strong>Ship To:</strong> {data.shipTo}</div>}
             {data.hpn && <div><strong>HPN:</strong> {data.hpn}</div>}
+            {data.salesPerson && <div><strong>Sales Person:</strong> {data.salesPerson}{data.salesContact ? ` | ${data.salesContact}` : ''}</div>}
           </div>
 
           {/* ── PRODUCTS DETAILS TABLE ── */}
