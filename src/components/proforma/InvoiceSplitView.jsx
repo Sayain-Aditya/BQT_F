@@ -41,7 +41,7 @@ const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "s
 
 const highlightAccountNumber = (text) => {
   if (!text) return text;
-  const token = "222110870000016";
+  const token = "2221108700000016";
   const label = "BankAccountNo";
   const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -78,7 +78,7 @@ const initialData = {
   includeGst: true,
   roundedTotal: "",
   otherTerms: "100% payment immediately upon delivery.",
-  paymentTerms: "Account Name: Madhwendra Kumar Singh\nBank Name: Punjab National Bank\nBankAccountNo:222110870000016\nIFSC Code: PUNB0222110",
+  paymentTerms: "Account Name: Madhwendra Kumar Singh\nBank Name: Punjab National Bank\nBankAccountNo:2221108700000016\nIFSC Code: PUNB0222110",
   validity: "15 days",
   footerCompany: "Madhwendra Kumar Singh",
   footerAddress: "162B, Adjacent to Lakme Salon, Siddharth Enclave, Taramandal, Gorakhpur, U.P. - 273017",
