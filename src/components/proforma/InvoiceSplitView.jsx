@@ -6,6 +6,7 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { saveProforma, getProforma, updateProforma } from "../../api/proformaInvoiceApi";
 import { getTyres } from "../../api/tyreApi";
+import { Alert } from "../shared/Dialog";
 
 // ---------- helpers ----------
 const inr2 = (n) => (isNaN(n) ? 0 : n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -125,6 +126,8 @@ export default function InvoiceSplitView() {
   const [saving, setSaving] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [saveMsgType, setSaveMsgType] = useState("success");
+  const [alertDialog, setAlertDialog] = useState(null);
   const [logo, setLogo] = useState(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const [mobileTab, setMobileTab] = useState("form");
@@ -136,6 +139,11 @@ export default function InvoiceSplitView() {
   const [tyreSuggestions, setTyreSuggestions] = useState([]);
   const [tyreSearch, setTyreSearch] = useState({});
   const tyreTimer = useRef(null);
+  const dataRef = useRef(data);
+  const logoRef = useRef(logo);
+  const calcRef = useRef({ calc: null, amountInWords: '' });
+  useEffect(() => { dataRef.current = data; }, [data]);
+  useEffect(() => { logoRef.current = logo; }, [logo]);
 
   // Load existing proforma when editing
   useEffect(() => {
@@ -147,7 +155,7 @@ export default function InvoiceSplitView() {
       docIdRef.current = _id;
       skipNextAutosave.current = true;
       if (rest.logo) setLogo(rest.logo);
-    }).catch(() => setSaveMsg("Failed to load invoice"));
+    }).catch(() => setAlertDialog({ type: 'warning', title: 'Load Failed', message: 'Could not load the quotation. Please try again.' }));
   }, [id]);
 
   const handleLogoUpload = async (e) => {
@@ -166,6 +174,7 @@ export default function InvoiceSplitView() {
       setLogo(data.url);
     } catch (err) {
       setSaveMsg('Logo upload failed: ' + err.message);
+      setSaveMsgType('error');
     } finally {
       setLogoUploading(false);
     }
@@ -232,6 +241,7 @@ export default function InvoiceSplitView() {
   }, [data.items, data.gstPercent, data.includeGst, data.roundedTotal]);
 
   const amountInWords = "RUPEES - " + numberToWordsLakh(calc.rounded) + " ONLY.";
+  useEffect(() => { calcRef.current = { calc, amountInWords }; }, [calc, amountInWords]);
 
   // Autosave: debounce 2s after every data change
   useEffect(() => {
@@ -249,12 +259,14 @@ export default function InvoiceSplitView() {
     if (isSavingRef.current) return null;
     isSavingRef.current = true;
     setSaving(true); setSaveMsg("");
+    const snapshot = dataRef.current;
+    const snapshotLogo = logoRef.current;
+    const { calc: snapshotCalc, amountInWords: snapshotWords } = calcRef.current;
     try {
-      const payload = { ...data, logo, totals: calc, amountInWords };
+      const payload = { ...snapshot, logo: snapshotLogo, totals: snapshotCalc, amountInWords: snapshotWords };
       if (docIdRef.current) {
-        const updated = await updateProforma(docIdRef.current, payload);
+        await updateProforma(docIdRef.current, payload);
         setSaveMsg("Saved");
-        return updated;
       } else {
         const saved = await saveProforma(payload);
         setDocId(saved._id);
@@ -353,6 +365,7 @@ export default function InvoiceSplitView() {
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-gray-100 font-sans print:block print:h-auto print:bg-white">
+      <Alert open={!!alertDialog} type={alertDialog?.type} title={alertDialog?.title} message={alertDialog?.message} onClose={() => setAlertDialog(null)} />
 
       {/* MOBILE TAB BAR */}
       <div className="md:hidden flex border-b border-gray-300 bg-white print:hidden shrink-0">

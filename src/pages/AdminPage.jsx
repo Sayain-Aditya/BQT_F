@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { getTyres, createTyre, updateTyre, deleteTyre, importTyres } from '../api/tyreApi';
+import { Confirm, Alert } from '../components/shared/Dialog';
 
 const PAGE_SIZE = 10;
 const empty = { name: '', price: '', category: '' };
@@ -15,6 +16,8 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [importing, setImporting] = useState(false);
+  const [confirm, setConfirm] = useState(null);
+  const [alert, setAlert] = useState(null);
   const fileRef = useRef();
   const searchTimer = useRef();
 
@@ -51,9 +54,13 @@ export default function AdminPage() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this tyre?')) return;
-    try { await deleteTyre(id); load(search); setMsg('Deleted.'); setTimeout(() => setMsg(''), 2000); }
-    catch (e) { setMsg(e.message); }
+    setConfirm({
+      onConfirm: async () => {
+        setConfirm(null);
+        try { await deleteTyre(id); load(search); setMsg('Deleted.'); setTimeout(() => setMsg(''), 2000); }
+        catch (e) { setAlert({ type: 'danger', title: 'Error', message: e.message }); }
+      },
+    });
   };
 
   const handleImport = async (e) => {
@@ -73,6 +80,22 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
+      <Confirm
+        open={!!confirm}
+        type="danger"
+        title="Delete Tyre?"
+        message="This tyre will be permanently removed from the catalogue."
+        confirmLabel="Delete"
+        onConfirm={confirm?.onConfirm}
+        onCancel={() => setConfirm(null)}
+      />
+      <Alert
+        open={!!alert}
+        type={alert?.type || 'info'}
+        title={alert?.title}
+        message={alert?.message}
+        onClose={() => setAlert(null)}
+      />
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>

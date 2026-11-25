@@ -12,7 +12,9 @@ const request = async (path, options = {}) => {
   return response.json();
 };
 
-export const getProformas = () => request('/api/proforma-invoices');
+export const getProformas = ({ page = 1, limit = 10, search = '' } = {}) =>
+  request(`/api/proforma-invoices?page=${page}&limit=${limit}&search=${encodeURIComponent(search)}`);
+export const restoreProforma = (id) => request(`/api/proforma-invoices/${id}/restore`, { method: 'PATCH' });
 export const getProforma = (id) => request(`/api/proforma-invoices/${id}`);
 export const saveProforma = (proforma) => request('/api/proforma-invoices', { method: 'POST', body: JSON.stringify(proforma) });
 export const updateProforma = (id, proforma) => request(`/api/proforma-invoices/${id}`, { method: 'PUT', body: JSON.stringify(proforma) });

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { getInvoices, deleteInvoice, saveInvoice } from '../api/invoiceApi';
-import { getProformas, deleteProforma } from '../api/proformaInvoiceApi';
+import { getProformas, deleteProforma, restoreProforma } from '../api/proformaInvoiceApi';
+import { Confirm, Alert } from '../components/shared/Dialog';
 
 const PAGE_SIZE = 10;
 
@@ -20,31 +21,18 @@ function Pagination({ page, total, onChange }) {
         Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
       </span>
       <div className="flex gap-1">
-        <button
-          onClick={() => onChange(page - 1)}
-          disabled={page === 1}
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
+        <button onClick={() => onChange(page - 1)} disabled={page === 1}
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           ← Prev
         </button>
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-          <button
-            key={p}
-            onClick={() => onChange(p)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-              p === page
-                ? 'bg-green-700 text-white border-green-700'
-                : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-100'
-            }`}
-          >
+          <button key={p} onClick={() => onChange(p)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${p === page ? 'bg-green-700 text-white border-green-700' : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-100'}`}>
             {p}
           </button>
         ))}
-        <button
-          onClick={() => onChange(page + 1)}
-          disabled={page === totalPages}
-          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
+        <button onClick={() => onChange(page + 1)} disabled={page === totalPages}
+          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
           Next →
         </button>
       </div>
@@ -56,60 +44,112 @@ const Dashboard = () => {
   const [tab, setTab] = useState('proforma');
   const [invoices, setInvoices] = useState([]);
   const [proformas, setProformas] = useState([]);
+  const [proformaTotal, setProformaTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [proformaPage, setProformaPage] = useState(1);
   const [invoicePage, setInvoicePage] = useState(1);
+  const searchTimer = useRef(null);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [confirm, setConfirm] = useState(null); // { message, onConfirm }
+  const [alert, setAlert] = useState(null);     // { type, title, message }
 
-  useEffect(() => { refresh(); }, []);
+  // Debounce search so we don't hit the server on every keystroke
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(search), 400);
+    return () => clearTimeout(searchTimer.current);
+  }, [search]);
 
-  // Reset to page 1 when search changes
-  useEffect(() => { setProformaPage(1); setInvoicePage(1); }, [search]);
-  useEffect(() => { setProformaPage(1); setInvoicePage(1); }, [tab]);
+  // Reset to page 1 when search or tab changes
+  useEffect(() => { setProformaPage(1); setInvoicePage(1); }, [debouncedSearch, tab]);
 
-  const refresh = async () => {
-    setLoading(true);
+  const fetchProformas = useCallback(async (page, q) => {
     try {
-      const [inv, pro] = await Promise.all([getInvoices(), getProformas()]);
-      setInvoices(inv);
-      setProformas(pro);
+      const res = await getProformas({ page, limit: PAGE_SIZE, search: q });
+      setProformas(res.proformas);
+      setProformaTotal(res.total);
     } catch (e) { alert(e.message); }
-    finally { setLoading(false); }
-  };
+  }, []);
+
+  // Fetch proformas whenever page or search changes
+  useEffect(() => {
+    if (tab === 'proforma') fetchProformas(proformaPage, debouncedSearch);
+  }, [proformaPage, debouncedSearch, tab, fetchProformas]);
+
+  // Initial load for invoices
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      getInvoices(),
+      getProformas({ page: 1, limit: PAGE_SIZE, search: '' }),
+    ]).then(([inv, pro]) => {
+      setInvoices(inv);
+      setProformas(pro.proformas);
+      setProformaTotal(pro.total);
+    }).catch((e) => alert(e.message))
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Delete this invoice?')) return;
-    await deleteInvoice(id);
-    refresh();
+    setConfirm({
+      message: 'Delete this invoice? This cannot be undone.',
+      onConfirm: async () => {
+        setConfirm(null);
+        await deleteInvoice(id);
+        setInvoices((prev) => prev.filter((i) => i._id !== id));
+      },
+    });
   };
 
   const handleDeleteProforma = async (id) => {
-    if (!window.confirm('Delete this proforma?')) return;
-    await deleteProforma(id);
-    refresh();
+    setConfirm({
+      message: 'Delete this quotation? You can restore it later.',
+      onConfirm: async () => {
+        setConfirm(null);
+        await deleteProforma(id);
+        fetchProformas(proformaPage, debouncedSearch);
+      },
+    });
+  };
+
+  const handleRestoreProforma = async (id) => {
+    await restoreProforma(id);
+    fetchProformas(proformaPage, debouncedSearch);
   };
 
   const handleDuplicate = async (invoice) => {
     const dup = { ...invoice, invoiceNumber: `${invoice.invoiceNumber}-COPY`, status: 'draft' };
     delete dup._id; delete dup.createdAt; delete dup.updatedAt;
     await saveInvoice(dup);
-    refresh();
+    const inv = await getInvoices();
+    setInvoices(inv);
   };
 
   const q = search.toLowerCase().trim();
-
-  const filteredProformas = proformas.filter((p) =>
-    !q || (p.refNo || '').toLowerCase().includes(q) || (p.to?.name || '').toLowerCase().includes(q)
-  );
   const filteredInvoices = invoices.filter((inv) =>
     !q || (inv.invoiceNumber || '').toLowerCase().includes(q) || (inv.customerName || '').toLowerCase().includes(q)
   );
-
-  const pagedProformas = filteredProformas.slice((proformaPage - 1) * PAGE_SIZE, proformaPage * PAGE_SIZE);
   const pagedInvoices = filteredInvoices.slice((invoicePage - 1) * PAGE_SIZE, invoicePage * PAGE_SIZE);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
+      <Confirm
+        open={!!confirm}
+        type="danger"
+        title="Are you sure?"
+        message={confirm?.message}
+        confirmLabel="Delete"
+        onConfirm={confirm?.onConfirm}
+        onCancel={() => setConfirm(null)}
+      />
+      <Alert
+        open={!!alert}
+        type={alert?.type}
+        title={alert?.title}
+        message={alert?.message}
+        onClose={() => setAlert(null)}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Quotations</h1>
         <div className="flex flex-wrap gap-2">
@@ -125,25 +165,18 @@ const Dashboard = () => {
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-gray-200">
         {['proforma', 'invoice'].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-semibold capitalize rounded-t-lg transition-colors ${
-              tab === t ? 'bg-white border border-b-white border-gray-200 text-green-900 -mb-px' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t === 'proforma' ? `Quotations (${proformas.length})` : `Invoices (${invoices.length})`}
+          <button key={t} onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-semibold capitalize rounded-t-lg transition-colors ${tab === t ? 'bg-white border border-b-white border-gray-200 text-green-900 -mb-px' : 'text-gray-500 hover:text-gray-700'}`}>
+            {t === 'proforma' ? `Quotations (${proformaTotal})` : `Invoices (${invoices.length})`}
           </button>
         ))}
       </div>
 
       {/* Search */}
       <div className="mb-4">
-        <input
-          type="text"
+        <input type="text"
           placeholder={tab === 'proforma' ? 'Search by ref no or client name…' : 'Search by invoice # or customer…'}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={search} onChange={(e) => setSearch(e.target.value)}
           className="w-full sm:w-72 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-green-700"
         />
       </div>
@@ -151,10 +184,10 @@ const Dashboard = () => {
       {loading ? (
         <div className="text-center py-20 text-gray-400 text-sm">Loading…</div>
       ) : tab === 'proforma' ? (
-        filteredProformas.length === 0 ? (
+        proformas.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-gray-400 text-sm mb-4">{q ? 'No results found.' : 'No quotations yet.'}</p>
-            {!q && <Link to="/proforma" className="bg-green-800 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-green-700">Create your first quotation</Link>}
+            <p className="text-gray-400 text-sm mb-4">{debouncedSearch ? 'No results found.' : 'No quotations yet.'}</p>
+            {!debouncedSearch && <Link to="/proforma" className="bg-green-800 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-green-700">Create your first quotation</Link>}
           </div>
         ) : (
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
@@ -170,7 +203,7 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {pagedProformas.map((p, i) => (
+                {proformas.map((p, i) => (
                   <tr key={p._id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 text-gray-400 text-xs">{(proformaPage - 1) * PAGE_SIZE + i + 1}</td>
                     <td className="px-4 py-3 font-medium text-gray-800">{p.refNo || '—'}</td>
@@ -189,7 +222,7 @@ const Dashboard = () => {
                 ))}
               </tbody>
             </table>
-            <Pagination page={proformaPage} total={filteredProformas.length} onChange={setProformaPage} />
+            <Pagination page={proformaPage} total={proformaTotal} onChange={setProformaPage} />
           </div>
         )
       ) : (
