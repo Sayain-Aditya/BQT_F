@@ -45,6 +45,7 @@ const Dashboard = () => {
   const [invoices, setInvoices] = useState([]);
   const [proformas, setProformas] = useState([]);
   const [proformaTotal, setProformaTotal] = useState(0);
+  const [proformaTotalValue, setProformaTotalValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [proformaPage, setProformaPage] = useState(1);
@@ -83,10 +84,13 @@ const Dashboard = () => {
     Promise.all([
       getInvoices(),
       getProformas({ page: 1, limit: PAGE_SIZE, search: '' }),
-    ]).then(([inv, pro]) => {
+      getProformas({ page: 1, limit: 10000, search: '' }),
+    ]).then(([inv, pro, all]) => {
       setInvoices(inv);
       setProformas(pro.proformas);
       setProformaTotal(pro.total);
+      const totalVal = all.proformas.reduce((sum, p) => sum + (p.totals?.rounded || 0), 0);
+      setProformaTotalValue(totalVal);
     }).catch((e) => alert(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -151,7 +155,7 @@ const Dashboard = () => {
         onClose={() => setAlert(null)}
       />
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Quotations</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
         <div className="flex flex-wrap gap-2">
           <Link to="/new" className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-600 transition-colors">
             + New Invoice
@@ -159,6 +163,18 @@ const Dashboard = () => {
           <Link to="/proforma" className="bg-green-800 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors">
             + New Quotation
           </Link>
+        </div>
+      </div>
+
+      {/* Stats cards */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Quotations</div>
+          <div className="text-3xl font-bold text-green-800">{proformaTotal}</div>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 px-5 py-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Value</div>
+          <div className="text-3xl font-bold text-green-800">₹{proformaTotalValue.toLocaleString('en-IN')}</div>
         </div>
       </div>
 
